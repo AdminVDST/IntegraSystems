@@ -141,7 +141,7 @@
       "executeOnce": true,
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT \"spareCode\", \"spareName\", \"spareDescription\", \"spareType\", \"spareStatus\", \"price\", \"quantity\", \"updatedAt\"\nFROM spares\nORDER BY \"firstSeenAt\", \"spareCode\";",
+        "query": "-- CSV собирается здесь: узел CSV в n8n (SheetJS) всегда добавляет BOM,\n-- из-за которого Report API не находит первую деталь\nSELECT string_agg(\n  concat_ws(';', \"spareCode\", coalesce(\"spareName\", ''), coalesce(\"spareDescription\", ''), coalesce(\"spareType\", ''),\n    coalesce(\"spareStatus\", ''), coalesce(\"price\", ''), coalesce(\"quantity\"::text, ''), coalesce(\"updatedAt\", '')),\n  E'\\n' ORDER BY \"firstSeenAt\", \"spareCode\") AS csv\nFROM spares;",
         "options": {}
       },
       "credentials": {
@@ -158,12 +158,13 @@
       "typeVersion": 1.1,
       "position": [1300, 0],
       "parameters": {
-        "operation": "csv",
+        "operation": "toText",
+        "sourceProperty": "csv",
         "binaryPropertyName": "data",
         "options": {
           "fileName": "spares.csv",
-          "headerRow": false,
-          "delimiter": ";"
+          "encoding": "utf8",
+          "addBOM": false
         }
       }
     },

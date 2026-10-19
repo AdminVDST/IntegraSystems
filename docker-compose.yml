@@ -12,7 +12,8 @@ services:
       - history_db_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "127.0.0.1:5432:5432"
+      # 15432 снаружи: 5432/5433 заняты локальными PostgreSQL
+      - "127.0.0.1:15432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U integration -d history"]
       interval: 5s
