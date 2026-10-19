@@ -1,0 +1,219 @@
+{
+  "id": "sparesSyncFlow01",
+  "name": "Синхронизация деталей: CMS → БД истории → Report API",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Moscow"
+  },
+  "nodes": [
+    {
+      "id": "b1a7c0de-0001-4000-8000-000000000001",
+      "name": "Запустить синхронизацию",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {}
+    },
+    {
+      "id": "b1a7c0de-0003-4000-8000-000000000003",
+      "name": "CMS: загрузить все детали",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [260, 0],
+      "parameters": {
+        "method": "GET",
+        "url": "http://77.67.89.207:8080/cms/spares",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "size",
+              "value": "10"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Basic ' + ($env.STAND_LOGIN + ':' + $env.STAND_PASSWORD).base64Encode() }}"
+            }
+          ]
+        },
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "qs",
+                    "name": "page",
+                    "value": "={{ $pageCount }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ $response.body.length < 10 }}",
+              "limitPagesFetched": true,
+              "maxRequests": 1000
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "b1a7c0de-0004-4000-8000-000000000004",
+      "name": "БД истории: сохранить детали",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [520, 0],
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "spares"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": ["spareCode"],
+          "schema": [
+            { "id": "spareCode", "displayName": "spareCode", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true },
+            { "id": "spareName", "displayName": "spareName", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false },
+            { "id": "spareDescription", "displayName": "spareDescription", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false },
+            { "id": "spareType", "displayName": "spareType", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false },
+            { "id": "spareStatus", "displayName": "spareStatus", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false },
+            { "id": "price", "displayName": "price", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false },
+            { "id": "quantity", "displayName": "quantity", "required": false, "defaultMatch": false, "display": true, "type": "number", "canBeUsedToMatch": false },
+            { "id": "updatedAt", "displayName": "updatedAt", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false }
+          ]
+        },
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "historyDbPg00001",
+          "name": "БД исторических данных"
+        }
+      }
+    },
+    {
+      "id": "b1a7c0de-0005-4000-8000-000000000005",
+      "name": "Report API: получить токен",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 0],
+      "executeOnce": true,
+      "parameters": {
+        "method": "POST",
+        "url": "http://77.67.89.207:8080/auth/token",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "username",
+              "value": "={{ $env.STAND_LOGIN }}"
+            },
+            {
+              "name": "password",
+              "value": "={{ $env.STAND_PASSWORD }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b1a7c0de-0006-4000-8000-000000000006",
+      "name": "БД истории: выбрать все детали",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1040, 0],
+      "executeOnce": true,
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT \"spareCode\", \"spareName\", \"spareDescription\", \"spareType\", \"spareStatus\", \"price\", \"quantity\", \"updatedAt\"\nFROM spares\nORDER BY \"firstSeenAt\", \"spareCode\";",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "historyDbPg00001",
+          "name": "БД исторических данных"
+        }
+      }
+    },
+    {
+      "id": "b1a7c0de-0007-4000-8000-000000000007",
+      "name": "Сформировать CSV-отчёт",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [1300, 0],
+      "parameters": {
+        "operation": "csv",
+        "binaryPropertyName": "data",
+        "options": {
+          "fileName": "spares.csv",
+          "headerRow": false,
+          "delimiter": ";"
+        }
+      }
+    },
+    {
+      "id": "b1a7c0de-0008-4000-8000-000000000008",
+      "name": "Report API: загрузить CSV",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 0],
+      "parameters": {
+        "method": "POST",
+        "url": "http://77.67.89.207:8080/report/csv",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Report API: получить токен').first().json.token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "text/csv; charset=utf-8"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Запустить синхронизацию": {
+      "main": [[{ "node": "CMS: загрузить все детали", "type": "main", "index": 0 }]]
+    },
+    "CMS: загрузить все детали": {
+      "main": [[{ "node": "БД истории: сохранить детали", "type": "main", "index": 0 }]]
+    },
+    "БД истории: сохранить детали": {
+      "main": [[{ "node": "Report API: получить токен", "type": "main", "index": 0 }]]
+    },
+    "Report API: получить токен": {
+      "main": [[{ "node": "БД истории: выбрать все детали", "type": "main", "index": 0 }]]
+    },
+    "БД истории: выбрать все детали": {
+      "main": [[{ "node": "Сформировать CSV-отчёт", "type": "main", "index": 0 }]]
+    },
+    "Сформировать CSV-отчёт": {
+      "main": [[{ "node": "Report API: загрузить CSV", "type": "main", "index": 0 }]]
+    }
+  }
+}

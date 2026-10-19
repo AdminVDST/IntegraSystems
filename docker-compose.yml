@@ -1,0 +1,62 @@
+name: integra-systems
+
+services:
+  history-db:
+    image: postgres:17.10-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: history
+      POSTGRES_USER: integration
+      POSTGRES_PASSWORD: integration
+    volumes:
+      - history_db_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U integration -d history"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Одноразовый импорт подключения к БД и workflow при первом запуске
+  n8n-setup:
+    image: n8nio/n8n:2.43.8
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?задайте N8N_ENCRYPTION_KEY в .env}
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        if [ -f /home/node/.n8n/.integra-imported ]; then echo "already imported"; exit 0; fi
+        n8n import:credentials --input=/import/credentials.json &&
+        n8n import:workflow --input=/import/workflow.json &&
+        touch /home/node/.n8n/.integra-imported
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n:/import:ro
+    depends_on:
+      history-db:
+        condition: service_healthy
+
+  n8n:
+    image: n8nio/n8n:2.43.8
+    restart: unless-stopped
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      GENERIC_TIMEZONE: ${TZ:-Europe/Moscow}
+      TZ: ${TZ:-Europe/Moscow}
+      STAND_LOGIN: ${STAND_LOGIN:?задайте STAND_LOGIN в .env}
+      STAND_PASSWORD: ${STAND_PASSWORD:?задайте STAND_PASSWORD в .env}
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      n8n-setup:
+        condition: service_completed_successfully
+
+volumes:
+  history_db_data:
+  n8n_data:
